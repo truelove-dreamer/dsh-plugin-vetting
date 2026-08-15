@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-vetting",
-  "version": "0.5.1",
-  "description": "DeepSeek Harness plugin: heuristic vetting of installed third-party plugins — static code scan for exfiltration, credential access, obfuscation, and persistence patterns, plus an optional runtime subprocess tripwire.",
+  "version": "0.5.2",
+  "description": "装插件前，先体检：第三方插件 = 进程内全权限代码，这个工具让'盲装'变成'知情安装'——恶意模式、越权路径、未检查依赖，一目了然。Static heuristic vetting for third-party DeepSeek Harness plugins: exfiltration, credential access, over-privileged paths, unvetted dependencies.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/truelove-dreamer/dsh-plugin-vetting.git"
