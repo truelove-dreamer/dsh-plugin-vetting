@@ -30,6 +30,7 @@ DSH 插件在 harness 进程内执行，拥有完整权限。因此本插件**�
 | **覆盖范围报告** | 每个包报告"扫了 N 个文件、M 行代码、X 个依赖/脚本"，让边界显式可见 |
 | **运行时表面** | 每个包报告 child_process / fetch / eval / socket 的**出现次数**——静态能告诉你插件运行时能触及哪些危险原语 |
 | **官方包哈希基线**（默认开） | `@deepseek-ai/*` 豁免的同时记录内容哈希基线（`$DSH_HOME/.dsh-plugin-vetting/baseline.json`）；安装包与基线不一致 → 豁免自动失效并报警（供应链投毒检测）——从"信任名字"变"信任内容" |
+| **插件工具门禁**（默认关） | `config.gate: "deny-unvetted"` 时，tools 管线拒绝调用**门禁安装后注册**的工具（即插件提供的工具），除非工具名在 `allowlistTools` 白名单。挂载在 `tools.guard`（即 `tools/pre-execute` 同一道闸）——**只拦"模型→插件工具"的调用面**，不碰插件进程内代码 |
 | 运行时绊线（可选，仅日志） | `config.monitor: true` 时监控 **harness 的 `ctx.subprocess` 通道**，可疑命令记警告日志；**只记不改** |
 | 官方豁免 | `@deepseek-ai/*` 自动豁免（但见哈希基线） |
 | 白名单 | `config.allowlist` 放行可信插件 |
