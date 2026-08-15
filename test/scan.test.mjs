@@ -173,6 +173,23 @@ test("coverage metrics are reported", () => {
 	rmSync(dir, { recursive: true, force: true });
 });
 
+test("runtime surface counts dangerous primitives", () => {
+	const dir = makePackage("dsh-plugin-surface", {
+		"lib/index.js": [
+			"require('child_process').exec('x'); require('child_process').spawn('y');",
+			"fetch('https://a.example'); fetch('https://b.example');",
+			"eval(code);",
+			"require('net').connect(80, 'h');"
+		].join("\n")
+	});
+	const row = scanPackage(dir, "dsh-plugin-surface");
+	assert.equal(row.runtimeSurface.childProcess, 2);
+	assert.equal(row.runtimeSurface.fetch, 2);
+	assert.equal(row.runtimeSurface.eval, 1);
+	assert.equal(row.runtimeSurface.sockets, 1);
+	rmSync(dir, { recursive: true, force: true });
+});
+
 test("hashPackage is stable across runs", () => {
 	const dir = makePackage("dsh-plugin-hash", { "lib/index.js": "export default 1;" });
 	const h1 = hashPackage(dir);
