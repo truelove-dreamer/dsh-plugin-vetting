@@ -1,10 +1,20 @@
-# dsh-plugin-vet
+# dsh-plugin-vetting
 
-DeepSeek Harness 插件：对已安装的**第三方插件**做恶意行为启发式扫描 + 可选运行时绊线。
+DeepSeek Harness 插件：对已安装的**第三方插件**做恶意行为启发式扫描 + 误伤（高权限误用）提示 + 可选运行时绊线。
 
 ## 威胁模型（先读这个）
 
-DSH 插件在 harness 进程内执行，拥有完整权限。因此本插件**不是安全边界**——它是**启发式绊线**（类似杀毒软件）：静态扫描插件源码，命中可疑模式（网络外传、凭据访问、混淆、持久化）就按权重打分并报告，**从不执行插件代码**，也**不拦截**（拦截会误伤正常插件）。
+DSH 插件在 harness 进程内执行，拥有完整权限。因此本插件**不是安全边界**——它是**启发式绊线**（类似杀毒软件）：静态扫描插件源码，命中可疑模式就报告，**从不执行插件代码**，**不拦截**（拦截会误伤正常插件）。
+
+**三类威胁，两种输出：**
+
+| 威胁 | 输出 | 含义 |
+|---|---|---|
+| **恶意**（外传凭据、eval、持久化） | risk 分数 → SAFE/LOW/MEDIUM/HIGH | 蓄意滥用，需人工核实 |
+| **误伤**（非恶意，但高权限路径写得太糙） | `suggest narrowing` 建议区 | 不扣分、不标可疑，只建议收窄权限 |
+| **运行时动态加载**（下载后 eval、远端模块） | 文档声明 + `[REVIEW]` 标记 | 静态扫描看不到，**不在扫描范围** |
+
+**fail-closed 视角**：任何命中 `eval` / `new Function` / `vm.runInNewContext` 的插件，**无论总分多少**都标 `[REVIEW: dynamic code execution present]`——eval 是静态扫描最大的盲区，它的存在本身就应降级信任，而不是等凑够分数才 HIGH。
 
 真正的根治方案应由 harness 提供"挂载前扫描钩子"——本插件是该思路的独立原型。
 
@@ -12,32 +22,33 @@ DSH 插件在 harness 进程内执行，拥有完整权限。因此本插件**�
 
 | 能力 | 说明 |
 |---|---|
-| `plugin_vet` 工具 / `/plugin-vet` 命令 | 扫描 `$DSH_HOME/profiles/*/node_modules` 下所有 `dsh-plugin-*`（含 `@scope/dsh-plugin-*`）第三方包，输出每个包的风险等级 + 命中位置（文件:行号） |
-| 官方豁免 | `@deepseek-ai/*` 自动豁免（它们本身含 fetch/spawn 等正常行为） |
-| 运行时绊线（可选） | `config.monitor: true` 时包装 `subprocess.spawn`，对可疑命令（外传网络、读 `/proc/<pid>/environ`）记警告日志；只记不改 |
-
-## 扫描规则（启发式）
-
-网络外传（fetch/HTTP 字面量/裸 socket/ngrok/webhook.site 等中继域名/硬编码 IP）、凭据访问（`process.env.*KEY*`、`.credentials.yaml`、`.env`、`/proc/*/environ`）、代码执行与混淆（`eval`/`new Function`/大段 base64/`fromCharCode`）、持久化（schtasks/开机启动/authorized_keys/cron）、读会话日志、install 生命周期脚本。
-
-权重累加：**SAFE(0) / LOW(1-4) / MEDIUM(5-9) / HIGH(≥10)**。
+| `plugin_vet` 工具 / `/plugin-vet` 命令 | 扫 `$DSH_HOME/profiles/*/node_modules` 下所有 `dsh-plugin-*`（含 `@scope/dsh-plugin-*`）第三方包 |
+| 恶意规则（15 条） | 网络外传、凭据访问、代码执行/混淆、持久化、读会话日志、生命周期脚本（**含 install/prepare/prepublishOnly**——git 依赖安装时 prepare 也会执行） |
+| 误伤规则（3 条） | home 目录宽松读取、字符串拼接路径、递归遍历 home——标为"建议收窄"而非可疑 |
+| 传递依赖 | 统计声明依赖数 + 就地扫描嵌套 `node_modules/*` 的生命周期脚本，报告"N 个未检查" |
+| `[REVIEW]` 标记 | eval/new Function 命中即降级信任，不看总分 |
+| 运行时绊线（可选） | `config.monitor: true` 时包装 `subprocess.spawn`，可疑命令记警告日志；只记不改 |
+| 官方豁免 | `@deepseek-ai/*` 自动豁免 |
+| 白名单 | `config.allowlist` 放行可信插件 |
 
 ## 安装
 
+包已声明 `dsh.bundle` manifest（根目录 `cordis.patch.yml`），一条命令自动挂载：
+
 ```bash
-dsh plugin --profile web add dsh-plugin-vet
+dsh plugin --profile web add dsh-plugin-vetting
 ```
 
-挂载（profile `cordis.patch.yml`）：
+手动挂载（可选，等价写法）：
 
 ```yaml
-- id: plugin-vet
-  name: dsh-plugin-vet
-  config:
-    # roots 缺省 = $DSH_HOME/profiles/*/node_modules
-    # monitor: true  # 开启运行时子进程绊线（只记日志）
-    # allowlist: [dsh-plugin-security-audit, dsh-plugin-credential-guard]
-    #   # 白名单：可信插件（如你自己的安全插件——它们规则里引用密钥路径，启发式必然高分）
+- insert:
+    - id: plugin-vet
+      name: dsh-plugin-vetting
+      config:
+        # monitor: true  # 可选：运行时子进程绊线（只记日志）
+        # allowlist: [dsh-plugin-security-audit]
+        #   # 白名单：可信插件（安全插件规则里引用密钥路径，启发式必然高分）
 ```
 
 ## 使用
@@ -48,14 +59,19 @@ dsh plugin --profile web add dsh-plugin-vet
 示例输出：
 
 ```
-# Plugin vet — 4 third-party plugin(s) scanned
-safe=2 low=1 medium=1 high=0
+# Plugin vet — 2 third-party plugin(s) scanned
+safe=1 low=0 medium=0 high=1
 
-[LOW] dsh-plugin-search-gate@0.1.0 (score 3)
-    - network-http: contains HTTP(S) URL literals @ lib/index.js:12
-    ...
+[HIGH] dsh-plugin-some-plugin@1.2.0 (score 12)
+    - network-fetch: makes fetch network requests @ lib/index.js:8
+    - eval: dynamic code execution — static scan cannot see what runs here; requires manual review @ lib/index.js:21 [REVIEW]
+    suggest narrowing (not suspicion):
+      - sloppy-home-read: reads under the user home with broad patterns @ lib/index.js:4
+    deps: 3 declared, 2 nested scanned, 1 unchecked
+      - nested dep evil-dep has lifecycle scripts: postinstall
 
 > heuristic scan only: a clean result is not a security guarantee
+> runtime-dynamic code (downloaded then eval'd, remote modules) is NOT in scope — static scan cannot see it
 ```
 
 ## 开发
@@ -67,6 +83,7 @@ npm test   # node --test，零依赖
 ## 诚实边界
 
 - 启发式扫描：恶意代码伪装成正常写法仍可能漏过；干净结果 ≠ 安全保证；
-- **已知误报类**：安全类插件（如 credential-guard / security-audit）的规则里会引用密钥路径、外传域名，启发式扫描必然高分——这是特征不是 bug，用 `allowlist` 白名单处理；
-- 静态扫描不覆盖"运行时才下载执行"的载荷；
+- **运行时动态加载的代码（下载后 eval、require 远端模块）不在静态扫描范围**——不要因扫描通过就放松警惕；
+- **已知误报类**：安全类插件（如 credential-guard / security-audit）的规则里会引用密钥路径、外传域名，启发式必然高分——用 `allowlist` 白名单处理；
+- 传递依赖只做**就地**扫描（包内嵌套 node_modules）+ 声明计数；提升到宿主 node_modules 的依赖不会逐个深扫，未检查数如实报告；
 - 绊线只记录不阻断；官方豁免按包名判断，不校验发布者可信度。

