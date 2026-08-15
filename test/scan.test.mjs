@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { classify, isOfficial, isPluginPackage } from "../lib/rules.js";
-import { runVet, scanPackage, collectSourceFiles } from "../lib/scan.js";
+import { runVet, scanPackage, collectSourceFiles, hashPackage, discoverOfficialPackages } from "../lib/scan.js";
 
 test("classify thresholds", () => {
 	assert.equal(classify(0), "SAFE");
@@ -161,4 +161,48 @@ test("transitive deps with lifecycle scripts are reported", () => {
 	assert.equal(row.deps.nestedScanned, 1);
 	assert.ok(row.deps.nestedScripts.some((d) => d.name === "evil-dep" && d.scripts.includes("postinstall")));
 	rmSync(dir, { recursive: true, force: true });
+});
+
+test("coverage metrics are reported", () => {
+	const dir = makePackage("dsh-plugin-coverage", {
+		"lib/index.js": "export default 1;\nexport const two = 2;"
+	});
+	const row = scanPackage(dir, "dsh-plugin-coverage");
+	assert.equal(row.filesScanned, 1);
+	assert.equal(row.linesScanned, 2);
+	rmSync(dir, { recursive: true, force: true });
+});
+
+test("hashPackage is stable across runs", () => {
+	const dir = makePackage("dsh-plugin-hash", { "lib/index.js": "export default 1;" });
+	const h1 = hashPackage(dir);
+	const h2 = hashPackage(dir);
+	assert.equal(h1, h2);
+	assert.equal(h1.length, 64);
+	rmSync(dir, { recursive: true, force: true });
+});
+
+test("official hash baseline detects tampering", () => {
+	const root = mkdtempSync(join(tmpdir(), "vet-off-"));
+	const offDir = join(root, "node_modules", "@deepseek-ai", "dsh-fake");
+	mkdirSync(join(offDir, "lib"), { recursive: true });
+	writeFileSync(join(offDir, "package.json"), JSON.stringify({ name: "@deepseek-ai/dsh-fake", version: "1.0.0" }));
+	writeFileSync(join(offDir, "lib/index.js"), "export const a = 1;");
+
+	const mem = { value: {} };
+	const baseline = { load: () => mem.value, save: (v) => { mem.value = v; } };
+
+	// first scan records the baseline
+	runVet([join(root, "node_modules")], { baseline });
+	const name = Object.keys(mem.value)[0];
+	assert.ok(name !== undefined, "baseline should be recorded on first scan");
+	assert.equal(name, "@deepseek-ai/dsh-fake");
+
+	// tamper with the official package content
+	writeFileSync(join(offDir, "lib/index.js"), "export const a = 2; // tampered");
+
+	const report = runVet([join(root, "node_modules")], { baseline });
+	const mismatch = report.warnings.find((w) => w.includes("OFFICIAL-PACKAGE MISMATCH"));
+	assert.ok(mismatch !== undefined, `expected mismatch warning, got: ${report.warnings.join(" | ")}`);
+	rmSync(root, { recursive: true, force: true });
 });
