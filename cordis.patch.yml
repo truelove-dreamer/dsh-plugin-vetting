@@ -1,0 +1,5 @@
+# dsh-plugin-vetting bundle layer: auto-mounts the plugin row when installed
+# via `dsh plugin --profile <name> add dsh-plugin-vetting`.
+- insert:
+    - id: plugin-vet
+      name: dsh-plugin-vetting

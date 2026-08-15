@@ -6,10 +6,16 @@
     "type": "git",
     "url": "git+https://github.com/truelove-dreamer/dsh-plugin-vetting.git"
   },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
   "type": "module",
   "main": "lib/index.js",
   "files": [
-    "lib"
+    "lib",
+    "cordis.patch.yml"
   ],
   "scripts": {
     "test": "node --test test/"
