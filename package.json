@@ -1,10 +1,10 @@
 {
-  "name": "dsh-plugin-vet",
+  "name": "dsh-plugin-vetting",
   "version": "0.1.0",
   "description": "DeepSeek Harness plugin: heuristic vetting of installed third-party plugins — static code scan for exfiltration, credential access, obfuscation, and persistence patterns, plus an optional runtime subprocess tripwire.",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/truelove-dreamer/dsh-plugin-vet.git"
+    "url": "git+https://github.com/truelove-dreamer/dsh-plugin-vetting.git"
   },
   "type": "module",
   "main": "lib/index.js",
