@@ -64,3 +64,33 @@ test("discoverPluginPackages follows junction/symlink entries", async () => {
 	assert.equal(found[0].name, "dsh-plugin-linked");
 	rmSync(root, { recursive: true, force: true });
 });
+
+// Regression: a dangling or file-target symlink named like a plugin must NOT
+// be discovered — it would otherwise appear as a phantom SAFE entry.
+test("discoverPluginPackages skips dangling symlinks (phantom-entry guard)", async () => {
+	const { discoverPluginPackages } = await import("../lib/scan.js");
+	const { mkdtempSync, mkdirSync, symlinkSync, writeFileSync, rmSync } = await import("node:fs");
+	const { tmpdir } = await import("node:os");
+	const { join } = await import("node:path");
+	const root = mkdtempSync(join(tmpdir(), "vet-phantom-"));
+	const nm = join(root, "node_modules");
+	mkdirSync(nm, { recursive: true });
+	// dangling link: target does not exist
+	try {
+		symlinkSync(join(root, "does-not-exist"), join(nm, "dsh-plugin-dangling"), process.platform === "win32" ? "junction" : "dir");
+	} catch {
+		rmSync(root, { recursive: true, force: true });
+		return; // environment without symlink permission — skip
+	}
+	// file-target link: points at a regular file
+	const fileTarget = join(root, "some-file.txt");
+	writeFileSync(fileTarget, "not a package");
+	try {
+		symlinkSync(fileTarget, join(nm, "dsh-plugin-filelink"), "file");
+	} catch {
+		/* file symlinks may need privileges on win32 — best-effort */
+	}
+	const found = discoverPluginPackages([nm]);
+	assert.equal(found.length, 0, "dangling/file-target links must NOT be discovered");
+	rmSync(root, { recursive: true, force: true });
+});
