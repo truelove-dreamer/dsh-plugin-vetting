@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        node: [18, 22]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Unit tests
+        run: npm test
+      - name: Syntax-check every lib file
+        run: for f in lib/*.js; do node --check "$f"; done
+      - name: Pack + import the tarball (entry must load from the shipped artifact)
+        run: |
+          npm pack --silent
+          mkdir pkg && tar -xzf dsh-plugin-vetting-*.tgz -C pkg
+          node -e "import('file://' + process.cwd() + '/pkg/package/lib/index.js').then(m => { if (m.name !== 'plugin-vet') { console.error('unexpected entry', m.name); process.exit(1) } }).catch(e => { console.error(e); process.exit(1) })"

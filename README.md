@@ -2,6 +2,15 @@
 
 **为了您的电脑安全**，装插件前，先体检：第三方插件 = 进程内全权限代码，这个工具让"盲装"变成"知情安装"——恶意模式、越权路径、未检查依赖，一目了然。
 
+> **⚠️ 紧急升级提示**：**0.5.1 会直接导致 profile 启动失败**（正则解析错误，见 [issue #1](https://github.com/truelove-dreamer/dsh-plugin-vetting/issues/1) / [#3](https://github.com/truelove-dreamer/dsh-plugin-vetting/issues/3)）。请升级到 **0.5.6+**：
+> ```bash
+> # 立即拿修复（显式版本绕过发布年龄策略）：
+> dsh plugin --profile web add dsh-plugin-vetting@^0.5.6
+> # 或等版本满 24h 后普通更新：
+> dsh plugin --profile web update dsh-plugin-vetting
+> ```
+> 说明：插件市场（dshmarket）为 pnpm 配置了 `minimumReleaseAge=1440`（24h）供应链策略，新版本发布后 24h 内不会被自动选中——显式指定 `@^0.5.6` 可立即获取。
+
 ## 威胁模型（先读这个）
 
 DSH 插件在 harness 进程内执行，拥有完整权限。因此本插件**不是安全边界**——它是**启发式绊线**（类似杀毒软件）：静态扫描插件源码，命中可疑模式就报告，**从不执行插件代码**，**不拦截**（拦截会误伤正常插件）。
